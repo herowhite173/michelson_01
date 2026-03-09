@@ -15,7 +15,6 @@ plt.rcParams['axes.unicode_minus'] = False
 # 设置Matplotlib渲染后端（解决部分环境显示问题）
 plt.switch_backend('Agg')
 
-
 # ======================== 核心计算函数 ========================
 def calculate_interference(k, h, wavelength_option, is_mobile=False):
     """
@@ -144,7 +143,6 @@ def calculate_interference(k, h, wavelength_option, is_mobile=False):
     plt.tight_layout(pad=2.0)
     return fig
 
-
 # ======================== 二维码生成函数（最终版）========================
 def generate_qr_code(url, is_mobile=False):
     """生成适配不同设备的二维码"""
@@ -173,7 +171,6 @@ def generate_qr_code(url, is_mobile=False):
     except Exception as e:
         st.warning(f"二维码生成失败: {str(e)[:50]}")
         return None
-
 
 # ======================== Streamlit 主界面（最终版）========================
 def main():
@@ -243,7 +240,7 @@ def main():
     """, unsafe_allow_html=True)
 
     # 标题（响应式）
-    st.markdown("""
+    st.markdown(f"""
     <div class="main-header">
         <h1>🔬 迈克尔逊干涉实验仿真</h1>
         <p>实时交互 | 等倾干涉 | 多端适配</p>
@@ -350,58 +347,57 @@ def main():
             原理_html = f"""
             <div style='font-size: {"0.85rem" if is_mobile else "0.95rem"}; line-height: 1.6;'>
             **迈克尔逊干涉**是典型的等倾干涉，相同入射角的光线形成同心圆环条纹：<br>
-            - 明纹条件： \(2h \cos \theta = K\lambda\)<br>
-            - 暗纹条件： \(2h \cos \theta = (2K+1)\frac{{\lambda}}{{2}}\)<br><br>
+            - 明纹条件： $2h \\cos \\theta = K\\lambda$<br>
+            - 暗纹条件： $2h \\cos \\theta = (2K+1)\\frac{{\\lambda}}{{2}}$<br><br>
             🔍 公式说明：<br>
-            • \(h\)：M1与M2'的间距（nm）<br>
-            • \(\theta\)：入射光与法线的夹角<br>
-            • \(K\)：干涉级次（整数）<br>
-            • \(\lambda\)：入射光波长（nm）
+            • $h$：M1与M2'的间距（nm）<br>
+            • $\\theta$：入射光与法线的夹角<br>
+            • $K$：干涉级次（整数）<br>
+            • $\\lambda$：入射光波长（nm）
             </div>
             """
             st.markdown(原理_html, unsafe_allow_html=True)
 
+    # ---------- col2 内容 ----------
+    with col2:
+        # 干涉图样计算与显示
+        try:
+            with st.spinner('🔄 正在计算干涉图样...'):
+                # 调用核心计算函数
+                fig = calculate_interference(k, h, wavelength, is_mobile)
+                # 显示图像（适配容器）
+                st.pyplot(fig, use_container_width=True)
+                # 清理Matplotlib资源
+                plt.close(fig)
 
-# ---------- col2 内容 ----------
-with col2:
-    # 干涉图样计算与显示
-    try:
-        with st.spinner('🔄 正在计算干涉图样...'):
-            # 调用核心计算函数
-            fig = calculate_interference(k, h, wavelength, is_mobile)
-            # 显示图像（适配容器）
-            st.pyplot(fig, use_container_width=True)
-            # 清理Matplotlib资源
-            plt.close(fig)
+            # 成功提示（美化）
+            st.success(f"""
+                ✅ 计算完成 | 
+                K=<strong>{k}</strong> | 
+                h=<strong>{h}</strong>nm | 
+                {wavelength}
+                """, unsafe_allow_html=True)
 
-        # 成功提示（美化）
-        st.success(f"""
-            ✅ 计算完成 | 
-            K=<strong>{k}</strong> | 
-            h=<strong>{h}</strong>nm | 
-            {wavelength}
-            """, unsafe_allow_html=True)
+        except Exception as e:
+            # 友好的错误提示
+            st.error(f"""
+                ❌ 计算出错：{str(e)[:80]}...<br>
+                💡 建议：刷新页面或调整参数重试
+                """, unsafe_allow_html=True)
+            # 调试模式下显示完整错误（可选）
+            if st.get_option("server.runOnSave"):
+                st.code(f"详细错误：{str(e)}", language='python')
 
-    except Exception as e:
-        # 友好的错误提示
-        st.error(f"""
-            ❌ 计算出错：{str(e)[:80]}...<br>
-            💡 建议：刷新页面或调整参数重试
-            """, unsafe_allow_html=True)
-        # 调试模式下显示完整错误（可选）
-        if st.get_option("server.runOnSave"):
-            st.code(f"详细错误：{str(e)}", language='python')
-
-# 页脚（响应式）
-st.markdown("---")
-st.markdown(f"""
-    <div style='text-align: center; color: #6c757d; padding: 1rem; font-size: {'0.75rem' if is_mobile else '0.85rem'};'>
-        <p>基于 Python + Streamlit 构建 | 波动光学实验仿真</p>
-        <p style='font-size: {'0.7rem' if is_mobile else '0.8rem'};'>
-            © 2026 全国大学生物理竞赛参赛作品 | 多端适配 · 实时交互
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
+    # 页脚（响应式）
+    st.markdown("---")
+    st.markdown(f"""
+        <div style='text-align: center; color: #6c757d; padding: 1rem; font-size: {'0.75rem' if is_mobile else '0.85rem'};'>
+            <p>基于 Python + Streamlit 构建 | 波动光学实验仿真</p>
+            <p style='font-size: {'0.7rem' if is_mobile else '0.8rem'};'>
+                © 2026 全国大学生物理竞赛参赛作品 | 多端适配 · 实时交互
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
 
 # ======================== 程序入口 ========================
 if __name__ == "__main__":
