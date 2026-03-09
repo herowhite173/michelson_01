@@ -339,7 +339,7 @@ def main():
 
         # 实验原理（优化排版）
         with st.expander("📚 实验原理", expanded=False):
-            st.markdown(f"""
+            st.markdown("""
             <div style='font-size: {'0.85rem' if is_mobile else '0.95rem'}; line-height: 1.6;'>
             **迈克尔逊干涉**是典型的等倾干涉，相同入射角的光线形成同心圆环条纹：<br>
             - 明纹条件： \(2h \cos \theta = K\lambda\)<br>
