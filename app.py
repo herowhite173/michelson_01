@@ -250,6 +250,7 @@ def main():
     </div>
     """, unsafe_allow_html=True)
 
+    # ========== 修正：布局定义（确保 col1 和 col2 正确初始化）==========
     # 布局（移动端单列，桌面端双列）
     if is_mobile:
         col1 = st.container()
@@ -257,8 +258,9 @@ def main():
     else:
         col1, col2 = st.columns([1, 2])
 
+    # ---------- col1 内容 ----------
     with col1:
-        # ======================== 智能二维码显示 ========================
+        # 二维码显示
         st.markdown("### 📱 手机扫码访问")
 
         # 适配本地/部署环境的URL
@@ -280,7 +282,7 @@ def main():
         """, unsafe_allow_html=True)
         st.markdown("---")
 
-        # ======================== 参数调节区（优化体验）========================
+        # 参数调节
         st.markdown("### ⚙️ 参数调节")
 
         # 经典参数快捷按钮
@@ -296,7 +298,7 @@ def main():
                 st.session_state.pop('h', None)
                 st.session_state.pop('wavelength', None)
 
-        # 干涉级次滑块（关联session_state，保留用户设置）
+        # 干涉级次滑块
         k = st.slider(
             "**干涉级次 K**",
             min_value=1,
@@ -332,7 +334,7 @@ def main():
         )
         st.session_state['wavelength'] = wavelength
 
-        # 当前参数显示（美化）
+        # 当前参数显示
         st.markdown("---")
         st.markdown("### 📊 当前参数")
         st.info(f"""
@@ -343,9 +345,8 @@ def main():
         </div>
         """, unsafe_allow_html=True)
 
-        # ========== 修正：实验原理（避免f-string反斜杠错误）==========
+        # 实验原理（修正：避免f-string反斜杠错误）
         with st.expander("📚 实验原理", expanded=False):
-            # 将HTML单独定义，避免f-string中的反斜杠问题
             原理_html = f"""
             <div style='font-size: {"0.85rem" if is_mobile else "0.95rem"}; line-height: 1.6;'>
             **迈克尔逊干涉**是典型的等倾干涉，相同入射角的光线形成同心圆环条纹：<br>
@@ -361,8 +362,9 @@ def main():
             st.markdown(原理_html, unsafe_allow_html=True)
 
 
+# ---------- col2 内容 ----------
 with col2:
-    # ======================== 干涉图样计算与显示 ========================
+    # 干涉图样计算与显示
     try:
         with st.spinner('🔄 正在计算干涉图样...'):
             # 调用核心计算函数
