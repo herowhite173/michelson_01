@@ -6,10 +6,8 @@ from matplotlib import gridspec
 import qrcode
 from PIL import Image
 import io
-import os
 
 # ======================== 全局配置（云端兼容版） ========================
-# Matplotlib 中文支持（适配 Streamlit Cloud 环境）
 plt.rcParams['font.sans-serif'] = ['DejaVu Sans', 'Arial Unicode MS', 'WenQuanYi Micro Hei']
 plt.rcParams['axes.unicode_minus'] = False
 plt.switch_backend('Agg')
@@ -17,7 +15,6 @@ plt.switch_backend('Agg')
 
 # ======================== 核心计算函数 ========================
 def calculate_interference(k, h, wavelength_option, is_mobile=False):
-    """迈克尔逊干涉图样计算（云端性能优化版）"""
     wavelength_map = {
         "红光 (650 nm)": 650e-9,
         "绿光 (532 nm)": 532e-9,
@@ -26,20 +23,15 @@ def calculate_interference(k, h, wavelength_option, is_mobile=False):
     }
     lamd = wavelength_map.get(wavelength_option, 650e-9)
 
-    # 云端性能优化：固定网格数（平衡速度与效果）
     N = 512 if is_mobile else 800
+    hi = 400e-3
+    ym = 250e-3
+    h1 = h * 1e-9
 
-    # 物理参数
-    hi = 400e-3  # 观察屏距离 (m)
-    ym = 250e-3  # 坐标范围 (m)
-    h1 = h * 1e-9  # 单位转换 nm→m
-
-    # 生成坐标网格
     x = np.linspace(-ym, ym, N)
     y = np.linspace(-ym, ym, N)
     X, Y = np.meshgrid(x, y)
 
-    # 核心物理计算
     r2 = np.sqrt(X ** 2 + Y ** 2)
     theta = np.arctan(r2 / hi)
     delta = 2 * h1 * np.cos(theta) - k * lamd
@@ -47,7 +39,6 @@ def calculate_interference(k, h, wavelength_option, is_mobile=False):
     I = 4 * 10 * np.cos(phi / 2) ** 2
     I = I / np.max(I) if np.max(I) != 0 else I
 
-    # 颜色映射
     cmap_dict = {
         650e-9: 'Reds_r',
         532e-9: 'Greens_r',
@@ -56,9 +47,8 @@ def calculate_interference(k, h, wavelength_option, is_mobile=False):
     }
     cmap = cmap_dict.get(lamd, 'viridis')
 
-    # 绘图（适配云端显示）
     fig_size = (10, 5) if is_mobile else (12, 6)
-    fig = plt.figure(figsize=fig_size, dpi=96)  # 降低dpi适配云端
+    fig = plt.figure(figsize=fig_size, dpi=96)
     gs = gridspec.GridSpec(1, 2, width_ratios=[1, 1.2])
 
     # ---- 原理图 ----
@@ -67,19 +57,16 @@ def calculate_interference(k, h, wavelength_option, is_mobile=False):
     h_display = min(h, 800) * 0.012
     h_display = max(h_display, 0.2)
 
-    # 绘制光学元件
     ax1.plot([-6, 6], [18, 18], '-', color='#2e8b57', linewidth=3, label='M2')
     ax1.plot([20, 20], [-8, 4], '-', color='#2e8b57', linewidth=3, label='M1')
     ax1.plot([-6, 6], [18 + h_display, 18 + h_display], '--', color='#ff6347', linewidth=2.5, label="M2'")
 
-    # 文字标注
     ax1.text(0, 14, "M2", fontsize=11, color='#2e8b57', fontweight='bold')
     ax1.text(0, 18 + h_display + 1.5, "M2'", fontsize=11, color='#ff6347', fontweight='bold')
     ax1.text(21, -1, 'M1', fontsize=11, color='#2e8b57', fontweight='bold')
     ax1.text(-1, 9, f'h = {h} nm', fontsize=10, color='black', fontweight='bold',
              bbox=dict(boxstyle="round,pad=0.3", facecolor='white', alpha=0.8))
 
-    # 光路绘制
     ax1.plot([-4, 4], [0, 4], '-', color='black', linewidth=2.5, label='分束镜')
     ax1.arrow(0, -20, 0, 35, head_width=0.6, head_length=1.2, fc='#dc143c', ec='#dc143c', alpha=0.8, linewidth=1.5)
     ax1.arrow(-18, -2, 30, 0, head_width=0.6, head_length=1.2, fc='#dc143c', ec='#dc143c', alpha=0.8, linewidth=1)
@@ -97,7 +84,6 @@ def calculate_interference(k, h, wavelength_option, is_mobile=False):
     extent_mm = [-ym * 1000, ym * 1000, -ym * 1000, ym * 1000]
     im = ax2.imshow(I, cmap=cmap, extent=extent_mm, origin='lower', aspect='auto')
 
-    # 坐标轴优化
     tick_step = 80 if is_mobile else 50
     ax2.yaxis.set_major_locator(ticker.MultipleLocator(tick_step))
     ax2.xaxis.set_major_locator(ticker.MultipleLocator(tick_step))
@@ -107,7 +93,6 @@ def calculate_interference(k, h, wavelength_option, is_mobile=False):
     ax2.set_ylabel("y (mm)", fontsize=11 if is_mobile else 12)
     ax2.grid(True, alpha=0.3, linestyle='--')
 
-    # 颜色条
     cbar = plt.colorbar(im, ax=ax2, label='相对光强', shrink=0.85)
     cbar.ax.tick_params(labelsize=9 if is_mobile else 10)
 
@@ -115,9 +100,8 @@ def calculate_interference(k, h, wavelength_option, is_mobile=False):
     return fig
 
 
-# ======================== 二维码生成函数（云端适配版） ========================
+# ======================== 二维码生成函数 ========================
 def generate_qr_code(url):
-    """生成适配云端的二维码"""
     try:
         qr = qrcode.QRCode(
             version=1,
@@ -138,9 +122,9 @@ def generate_qr_code(url):
         return None
 
 
-# ======================== Streamlit 主界面（云端版） ========================
+# ======================== Streamlit 主界面（云端稳定版） ========================
 def main():
-    # 1. 页面配置（云端优先）
+    # 1. 页面配置
     st.set_page_config(
         page_title="迈克尔逊干涉实验仿真",
         page_icon="🔬",
@@ -148,13 +132,13 @@ def main():
         initial_sidebar_state="collapsed"
     )
 
-    # 2. 移动端检测（云端适配）
+    # 2. 移动端检测
     try:
         is_mobile = st.query_params.get("mobile", "") == "true"
     except:
         is_mobile = False
 
-    # 3. 自定义CSS（响应式+云端美化）
+    # 3. 自定义CSS
     st.markdown("""
     <style>
     .stApp { background-color: #f8f9fa; }
@@ -193,12 +177,7 @@ def main():
     </div>
     """, unsafe_allow_html=True)
 
-    # 5. 获取云端应用URL（关键：动态生成二维码）
-    app_url = st.runtime.get_instance()._session_mgr.get_active_session_info().url
-    if not app_url:
-        app_url = f"https://{st.secrets.get('APP_NAME', 'your-app-name')}.streamlit.app"
-
-    # 6. 布局（响应式）
+    # 5. 布局
     if is_mobile:
         col1, col2 = st.container(), st.container()
     else:
@@ -206,17 +185,12 @@ def main():
 
     # ========== 左侧栏（参数+二维码） ==========
     with col1:
-        # 二维码展示（云端URL）
+        # 二维码和访问地址（关键：改用占位符，避免内部API）
         st.markdown("### 📱 扫码访问")
-        qr_bytes = generate_qr_code(app_url)
-        if qr_bytes:
-            st.image(qr_bytes, caption="手机扫码直接使用", width=150)
-        st.markdown(f"""
-        <div class="param-card">
-            <p style='color: #2c3e50; font-weight: 600;'>🌐 访问地址：</p>
-            <p style='word-break: break-all;'>{app_url}</p>
-        </div>
-        """, unsafe_allow_html=True)
+        st.info("""
+        💡 请使用浏览器地址栏中的 URL 生成二维码，或直接分享该链接。
+        手机扫码或点击链接即可访问。
+        """)
 
         # 参数调节区
         st.markdown("### ⚙️ 参数调节")
@@ -295,7 +269,7 @@ def main():
         except Exception as e:
             st.error(f"❌ 计算出错：{str(e)[:80]}...")
 
-    # 页脚（云端版）
+    # 页脚
     st.markdown("---")
     st.markdown("""
     <div style='text-align: center; color: #6c757d; padding: 1rem; font-size: 0.85rem;'>
