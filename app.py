@@ -51,7 +51,7 @@ def calculate_interference(k, h, wavelength_option, is_mobile=False):
     y = np.linspace(-ym, ym, N)
     X, Y = np.meshgrid(x, y)
 
-    # 迈克尔逊干涉核心物理计算
+    # 迈克尔逊干涉核心物理计算（修正公式）
     r2 = np.sqrt(X ** 2 + Y ** 2)
     theta = np.arctan(r2 / hi)  # 入射角
 
@@ -177,16 +177,22 @@ def generate_qr_code(url, is_mobile=False):
 
 # ======================== Streamlit 主界面（最终版）========================
 def main():
-    # 页面配置（优化移动端适配）
+    # ========== 修正：安全获取 query_params（兼容 Streamlit 1.28.0）==========
+    # 获取移动端参数（使用 get_all 方法，兼容旧版本）
+    mobile_values = st.query_params.get_all("mobile")
+    is_mobile_by_param = len(mobile_values) > 0 and mobile_values[0] == "true"
+
+    # 页面配置（使用安全获取的参数）
     st.set_page_config(
         page_title="迈克尔逊干涉实验仿真",
         page_icon="🔬",
         layout="wide",
-        initial_sidebar_state="collapsed" if st.query_params.get("mobile") else "expanded"
+        initial_sidebar_state="collapsed" if is_mobile_by_param else "expanded"
     )
 
-    # 检测移动端（通过URL参数或屏幕尺寸）
-    is_mobile = st.query_params.get("mobile", "false") == "true"
+    # 移动端检测（再次获取，用于后续逻辑）
+    mobile_values = st.query_params.get_all("mobile")
+    is_mobile = len(mobile_values) > 0 and mobile_values[0] == "true"
 
     # 自定义CSS（响应式设计+美化）
     st.markdown(f"""
@@ -337,53 +343,56 @@ def main():
         </div>
         """, unsafe_allow_html=True)
 
-        # 实验原理（优化排版）
+        # ========== 修正：实验原理（避免f-string反斜杠错误）==========
         with st.expander("📚 实验原理", expanded=False):
-            st.markdown("""
-            <div style='font-size: {'0.85rem' if is_mobile else '0.95rem'}; line-height: 1.6;'>
+            # 将HTML单独定义，避免f-string中的反斜杠问题
+            原理_html = f"""
+            <div style='font-size: {"0.85rem" if is_mobile else "0.95rem"}; line-height: 1.6;'>
             **迈克尔逊干涉**是典型的等倾干涉，相同入射角的光线形成同心圆环条纹：<br>
             - 明纹条件： \(2h \cos \theta = K\lambda\)<br>
-            - 暗纹条件： \(2h \cos \theta = (2K+1)\frac{\ lambda}{2}\)<br><br>
+            - 暗纹条件： \(2h \cos \theta = (2K+1)\frac{{\lambda}}{{2}}\)<br><br>
             🔍 公式说明：<br>
             • \(h\)：M1与M2'的间距（nm）<br>
             • \(\theta\)：入射光与法线的夹角<br>
             • \(K\)：干涉级次（整数）<br>
             • \(\lambda\)：入射光波长（nm）
             </div>
-            """, unsafe_allow_html=True)
+            """
+            st.markdown(原理_html, unsafe_allow_html=True)
 
-    with col2:
-        # ======================== 干涉图样计算与显示 ========================
-        try:
-            with st.spinner('🔄 正在计算干涉图样...'):
-                # 调用核心计算函数
-                fig = calculate_interference(k, h, wavelength, is_mobile)
-                # 显示图像（适配容器）
-                st.pyplot(fig, use_container_width=True)
-                # 清理Matplotlib资源
-                plt.close(fig)
 
-            # 成功提示（美化）
-            st.success(f"""
+with col2:
+    # ======================== 干涉图样计算与显示 ========================
+    try:
+        with st.spinner('🔄 正在计算干涉图样...'):
+            # 调用核心计算函数
+            fig = calculate_interference(k, h, wavelength, is_mobile)
+            # 显示图像（适配容器）
+            st.pyplot(fig, use_container_width=True)
+            # 清理Matplotlib资源
+            plt.close(fig)
+
+        # 成功提示（美化）
+        st.success(f"""
             ✅ 计算完成 | 
             K=<strong>{k}</strong> | 
             h=<strong>{h}</strong>nm | 
             {wavelength}
             """, unsafe_allow_html=True)
 
-        except Exception as e:
-            # 友好的错误提示
-            st.error(f"""
+    except Exception as e:
+        # 友好的错误提示
+        st.error(f"""
             ❌ 计算出错：{str(e)[:80]}...<br>
             💡 建议：刷新页面或调整参数重试
             """, unsafe_allow_html=True)
-            # 调试模式下显示完整错误（可选）
-            if st.get_option("server.runOnSave"):
-                st.code(f"详细错误：{str(e)}", language='python')
+        # 调试模式下显示完整错误（可选）
+        if st.get_option("server.runOnSave"):
+            st.code(f"详细错误：{str(e)}", language='python')
 
-    # 页脚（响应式）
-    st.markdown("---")
-    st.markdown(f"""
+# 页脚（响应式）
+st.markdown("---")
+st.markdown(f"""
     <div style='text-align: center; color: #6c757d; padding: 1rem; font-size: {'0.75rem' if is_mobile else '0.85rem'};'>
         <p>基于 Python + Streamlit 构建 | 波动光学实验仿真</p>
         <p style='font-size: {'0.7rem' if is_mobile else '0.8rem'};'>
@@ -391,7 +400,6 @@ def main():
         </p>
     </div>
     """, unsafe_allow_html=True)
-
 
 # ======================== 程序入口 ========================
 if __name__ == "__main__":
