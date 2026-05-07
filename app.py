@@ -1,3 +1,6 @@
+#实验数据没问题！
+#不确定度：标准贝塞尔公式+逐点漂移法
+#GIF动图：镜片间距上限修改为400
 import streamlit as st
 import numpy as np
 import matplotlib.pyplot as plt
@@ -57,7 +60,7 @@ RECORD_N = [0, 50, 100, 150, 200, 250, 300, 350]
 MAX_USES_PER_HOUR = 3
 MAX_H_VALUE = 20000.0
 MAX_FRINGE_COUNT = 360
-ERROR_RANGE = 0.0015
+# ERROR_RANGE = 0.0015  改成一色一误差！
 
 
 def get_step_per_fringe(wl_name):
@@ -79,8 +82,24 @@ def calc_h_from_fringe_count(fringe_count, wl_name):
     return DEFAULT_H + fringe_count * step
 
 
-def add_measurement_error(value):
-    error = random.uniform(-ERROR_RANGE, ERROR_RANGE)
+def add_measurement_error(value, step_idx):
+    current_wl = st.session_state.wl
+    lam_nm = TRUE_WAVELENGTH[current_wl]
+    # 物理极限：1条条纹误差 = λ/2
+    max_err_nm = lam_nm / 2.0
+    max_err_mm = max_err_nm / 1_000_000.0
+
+    # 从第0点到第7点，误差线性漂移，总漂移量不超过 ±max_err_mm
+    # step_idx 范围 0~7
+    drift = (step_idx / 7) * st.session_state.drift_direction * max_err_mm * st.session_state.drift_seed
+
+    # 加一点微小随机扰动，避免完全线性
+    noise = random.uniform(-max_err_mm * 0.05, max_err_mm * 0.05)
+    error = drift + noise
+
+    # 强制限制误差不超过 ±1条纹，保证物理极限
+    error = max(-max_err_mm, min(max_err_mm, error))
+
     return round(value + error, 5)
 
 
@@ -142,12 +161,20 @@ def reset_all_to_default():
     st.session_state.wl = DEFAULT_WL
     st.session_state.fringe_count = 0
     st.session_state.pos_data = {n: None for n in RECORD_N}
-    initial_actual_mm = add_measurement_error(OPTICAL_OFFSET_MM)
+    # 👇 先初始化！
+    st.session_state.drift_seed = random.uniform(-1, 1)
+    st.session_state.drift_direction = random.choice([-1, 1])
+
+
+    initial_actual_mm = add_measurement_error(OPTICAL_OFFSET_MM, step_idx=0)
     st.session_state.pos_data[0] = initial_actual_mm
     st.session_state.experiment_completed = False
     st.session_state.need_reset = True
     st.session_state.gif_click_count = 0
     st.session_state.lock_wavelength = False  # 重置解锁光源
+    # 👇 新增：初始化漂移误差的种子和方向
+    st.session_state.drift_seed = random.uniform(-1, 1)
+    st.session_state.drift_direction = random.choice([-1, 1])
     if "reset_counter" not in st.session_state:
         st.session_state.reset_counter = 0
     st.session_state.reset_counter += 1
@@ -155,24 +182,26 @@ def reset_all_to_default():
 
 def update_pos_data():
     step = get_step_per_fringe(st.session_state.wl)
-    for n in RECORD_N:
+    # 👇 用 enumerate 同时拿到索引 step_idx 和环数 n
+    for step_idx, n in enumerate(RECORD_N):
         if st.session_state.fringe_count >= n and st.session_state.pos_data[n] is None:
             theoretical_h_mm = OPTICAL_OFFSET_MM + (DEFAULT_H + n * step) / 1e6
             if n == 0:
                 st.session_state.pos_data[n] = theoretical_h_mm
             else:
-                st.session_state.pos_data[n] = add_measurement_error(theoretical_h_mm)
-
+                # 👇 传递 step_idx
+                st.session_state.pos_data[n] = add_measurement_error(theoretical_h_mm, step_idx)
 
 def force_update_pos_data():
     step = get_step_per_fringe(st.session_state.wl)
-    for n in RECORD_N:
+    # 👇 同样传递 step_idx
+    for step_idx, n in enumerate(RECORD_N):
         if st.session_state.fringe_count >= n:
             theoretical_h_mm = OPTICAL_OFFSET_MM + (DEFAULT_H + n * step) / 1e6
             if n == 0:
                 st.session_state.pos_data[n] = theoretical_h_mm
             else:
-                st.session_state.pos_data[n] = add_measurement_error(theoretical_h_mm)
+                st.session_state.pos_data[n] = add_measurement_error(theoretical_h_mm, step_idx)
         else:
             st.session_state.pos_data[n] = None
 
@@ -182,25 +211,41 @@ def calculate_uncertainty():
         data = [st.session_state.pos_data[n] for n in RECORD_N]
         if None in data:
             return None
+
         data_nm = [d * 1e6 for d in data]
         deltas = []
         for i in range(4):
-            deltas.append(data_nm[i + 4] - data_nm[i])
-        delta_h_mean = np.mean(deltas)
-        lambda_measured = 2 * delta_h_mean / 200
+            deltas.append(data_nm[i+4] - data_nm[i])
+
+        # ===================== A 类不确定度（详细计算） =====================
+        n = len(deltas)
+        mean_d = sum(deltas) / n
+        sum_sq = sum((d - mean_d)**2 for d in deltas)
+        sigma = np.sqrt(sum_sq / (n - 1))
+        u_A = sigma / np.sqrt(n)
+
+        # 波长计算
+        lambda_measured = 2 * mean_d / 200
         lambda_true = TRUE_WAVELENGTH[st.session_state.wl]
         rel_error = abs(lambda_measured - lambda_true) / lambda_true * 100
-        std = np.std(deltas, ddof=1)
-        u_A = std / np.sqrt(len(deltas))
-        U = 2 * u_A
+
+        # ===================== B 类不确定度（固定 0.00005 mm） =====================
+        instrument_error_mm = 0.00005
+        instrument_error_nm = instrument_error_mm * 1_000_000
+        u_B = instrument_error_nm / np.sqrt(3)
+
+        # 合成不确定度
+        u_C = np.sqrt(u_A ** 2 + u_B ** 2)
+
         return {
             "lambda_measured": round(lambda_measured, 3),
-            "lambda_true": lambda_true,
+            "lambda_true": round(lambda_true, 3),
             "rel_error": round(rel_error, 3),
             "u_A": round(u_A, 3),
-            "U": round(U, 3),
+            "u_B": round(u_B, 3),
+            "u_C": round(u_C, 3),
         }
-    except Exception:
+    except:
         return None
 
 
@@ -266,7 +311,7 @@ def plot_interference(i_intensity, cmap, h):
         ax2.xaxis.set_major_locator(ticker.MultipleLocator(5))
         ax2.yaxis.set_major_locator(ticker.MultipleLocator(5))
         actual_mm = OPTICAL_OFFSET_MM + h / 1e6
-        ax2.set_title(f"迈克尔逊干涉 (镜片间距={actual_mm:.6f} mm)")
+        ax2.set_title(f"迈克尔逊干涉 (镜片间距={actual_mm:.5f} mm)")
         ax2.grid(alpha=0.3)
         plt.tight_layout(pad=2)
         return fig
@@ -279,7 +324,7 @@ def add_watermark(img, k_const, h, wl):
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
     actual_mm = OPTICAL_OFFSET_MM + h / 1e6
     line1 = f"实验日期：{now}"
-    line2 = f"间距={actual_mm:.6f}mm  移动={h:.1f}nm  {wl}"
+    line2 = f"间距={actual_mm:.5f}mm  移动={h:.1f}nm  {wl}"
     draw = ImageDraw.Draw(img)
     try:
         font = ImageFont.truetype("SourceHanSansCN-Regular1.otf", 26)
@@ -290,36 +335,21 @@ def add_watermark(img, k_const, h, wl):
     return img
 
 
-@st.dialog("📊 波长不确定度计算结果", width="large")
+@st.dialog("波长不确定度计算结果", width="medium")
 def show_uncertainty_dialog():
     res = calculate_uncertainty()
     if not res:
         st.error("❌ 数据不完整，请先完成8组实验数据采集！")
         return
 
-    # 1. 生成水平表格数据（关键修改在这里）
     record_n = RECORD_N
     pos_data = st.session_state.pos_data
+    row_du = [f"{pos_data[n]:.5f}" if pos_data[n] is not None else "未采集" for n in record_n]
 
-    # 构造一行读数
-    row_du = []
-    for n in record_n:
-        h_val = pos_data[n]
-        row_du.append(f"{h_val:.5f}" if h_val is not None else "未采集")
-
-    # 列名就是环数 0 50 100...
-    df = pd.DataFrame(
-        [row_du],
-        columns=[str(x) for x in record_n],
-        index=["读数/mm"]
-    )
-
-    # 手动把左上角 index 名字改成 环数
+    df = pd.DataFrame([row_du], columns=[str(x) for x in record_n], index=["读数/mm"])
     df.index.name = "环数/个"
-
-    # 2. 显示水平表格
     st.dataframe(df, use_container_width=True)
-    # 3. 显示计算结果
+
     st.markdown(
         f"""
     <div style="font-size:18px; line-height:1.8;">
@@ -328,11 +358,13 @@ def show_uncertainty_dialog():
     <b>当前实验波长：</b> {st.session_state.wl}<br>
     <b>标准波长 λ₀：</b> {res['lambda_true']} nm<br>
     <b>测量波长平均值 λ：</b> {res['lambda_measured']} nm<br>
-    <b>相对误差：</b> {res['rel_error']} %<br>
-    <b>A类不确定度 u_A：</b> ±{res['u_A']} nm<br>
-    <b>扩展不确定度 U(k=2)：</b> ±{res['U']} nm<br>
+    <b>相对误差：</b> {res['rel_error']:.2f} %<br>
     <hr>
-    <p style='color:green; text-align:center;'>数据有效，可用于实验报告</p>
+    <b>A类不确定度 u_A：</b> ±{res['u_A']} nm<br>
+    <b>B类不确定度 u_B：</b> ±{res['u_B']} nm<br>
+    <b>合成不确定度 u_C：</b> ±{res['u_C']} nm<br>
+    <hr>
+    <p style='color:green;'>数据有效，可用于实验报告</p>
     </div>
     """,
         unsafe_allow_html=True,
@@ -473,7 +505,11 @@ def main():
         st.session_state.wl = DEFAULT_WL
         st.session_state.fringe_count = 0
         st.session_state.pos_data = {n: None for n in RECORD_N}
-        st.session_state.pos_data[0] = add_measurement_error(OPTICAL_OFFSET_MM)
+        # 👇 加上这两行！初始化漂移
+        st.session_state.drift_seed = random.uniform(-1, 1)
+        st.session_state.drift_direction = random.choice([-1, 1])
+
+        st.session_state.pos_data[0] = add_measurement_error(OPTICAL_OFFSET_MM, step_idx=0)
         st.session_state.usage_records_demo_export = []
         st.session_state.usage_records_sim_complete = []
         st.session_state.reset_counter = 0
@@ -531,7 +567,7 @@ def main():
                     max_value=2.50500,
                     value=actual_mm,
                     step=0.00010,
-                    format="%.6f",
+                    format="%.5f",
                     label_visibility="collapsed",
                     key=f"h_mm_demo_{st.session_state.reset_counter}",
                 )
@@ -611,7 +647,7 @@ def main():
                         lamd_val = wave_dict[st.session_state.wl]
                         with st.spinner("生成中..."):
                             frames = []
-                            for hi in np.linspace(20, 200, 10):
+                            for hi in np.linspace(20, 400, 10):
                                 fi, cmapi = calculate_data(K_CONST, hi, lamd_val)
                                 fg = plot_interference(fi, cmapi, hi)
                                 b = io.BytesIO()
